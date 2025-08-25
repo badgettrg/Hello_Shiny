@@ -1,3 +1,10 @@
+name: Show config
+  run: |
+    echo "Account: $SHINYAPPS_ACCOUNT"
+    echo "App dir: $APP_DIR"
+    echo "App name: ${SHINYAPPS_APPNAME:-<default-to-folder>}"
+    ls -la "$APP_DIR"
+
 name: Deploy to shinyapps.io
 
 on:
