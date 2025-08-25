@@ -1,0 +1,69 @@
+name: Deploy to shinyapps.io
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    env:
+      # If your app lives in a subfolder, set APP_DIR to that path (e.g., "apps/hello").
+      # Leave as "." if the app (app.R or ui.R/server.R) is at repo root.
+      APP_DIR: "."
+
+      # Optional: set a custom app name (otherwise we'll default to the folder name)
+      # SHINYAPPS_APPNAME: "Hello_Shiny"
+
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up R
+        uses: r-lib/actions/setup-r@v2
+
+      - name: Set up Pandoc
+        uses: r-lib/actions/setup-pandoc@v2
+
+      # If you use renv, this will restore packages.
+      # Otherwise we'll install just rsconnect in the next step.
+      - name: Restore renv (if present)
+        run: |
+          Rscript -e 'if (file.exists("renv.lock")) { install.packages("renv"); renv::restore() }'
+
+      - name: Install rsconnect (if needed)
+        run: |
+          Rscript -e 'if (!"rsconnect" %in% rownames(installed.packages())) install.packages("rsconnect")'
+
+      - name: Deploy to shinyapps.io
+        env:
+          SHINYAPPS_ACCOUNT: ${{ secrets.SHINYAPPS_ACCOUNT }}
+          SHINYAPPS_TOKEN:   ${{ secrets.SHINYAPPS_TOKEN }}
+          SHINYAPPS_SECRET:  ${{ secrets.SHINYAPPS_SECRET }}
+          APP_DIR:           ${{ env.APP_DIR }}
+          SHINYAPPS_APPNAME: ${{ env.SHINYAPPS_APPNAME }}
+        run: |
+          Rscript - <<'RSCRIPT'
+          # Configure rsconnect account from GitHub Secrets
+          rsconnect::setAccountInfo(
+            name   = Sys.getenv("SHINYAPPS_ACCOUNT"),
+            token  = Sys.getenv("SHINYAPPS_TOKEN"),
+            secret = Sys.getenv("SHINYAPPS_SECRET")
+          )
+
+          app_dir  <- Sys.getenv("APP_DIR", unset = ".")
+          # Use provided app name or default to folder name
+          app_name <- Sys.getenv("SHINYAPPS_APPNAME", unset = basename(normalizePath(app_dir)))
+
+          # Deploy (forceUpdate = TRUE ensures updates overwrite prior bundle)
+          rsconnect::deployApp(
+            appDir   = app_dir,
+            appName  = app_name,
+            forceUpdate = TRUE,
+            logLevel = "verbose"
+          )
+          RSCRIPT
