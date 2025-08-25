@@ -1,10 +1,3 @@
-name: Show config
-  run: |
-    echo "Account: $SHINYAPPS_ACCOUNT"
-    echo "App dir: $APP_DIR"
-    echo "App name: ${SHINYAPPS_APPNAME:-<default-to-folder>}"
-    ls -la "$APP_DIR"
-
 name: Deploy to shinyapps.io
 
 on:
@@ -19,12 +12,10 @@ jobs:
       contents: read
 
     env:
-      # If your app lives in a subfolder, set APP_DIR to that path (e.g., "apps/hello").
-      # Leave as "." if the app (app.R or ui.R/server.R) is at repo root.
+      # If your app is in a subfolder, change "." to that path
       APP_DIR: "."
-
-      # Optional: set a custom app name (otherwise we'll default to the folder name)
-      # SHINYAPPS_APPNAME: "Hello_Shiny"
+      # Optional: force a specific app URL suffix
+      SHINYAPPS_APPNAME: "Hello_Shiny"
 
     steps:
       - name: Check out repo
@@ -36,8 +27,6 @@ jobs:
       - name: Set up Pandoc
         uses: r-lib/actions/setup-pandoc@v2
 
-      # If you use renv, this will restore packages.
-      # Otherwise we'll install just rsconnect in the next step.
       - name: Restore renv (if present)
         run: |
           Rscript -e 'if (file.exists("renv.lock")) { install.packages("renv"); renv::restore() }'
@@ -46,31 +35,34 @@ jobs:
         run: |
           Rscript -e 'if (!"rsconnect" %in% rownames(installed.packages())) install.packages("rsconnect")'
 
+      - name: Show config
+        run: |
+          echo "Account: ${{ secrets.SHINYAPPS_ACCOUNT }}"
+          echo "App dir: $APP_DIR"
+          echo "App name: ${SHINYAPPS_APPNAME:-<default-to-folder>}"
+          ls -la "$APP_DIR"
+
       - name: Deploy to shinyapps.io
         env:
           SHINYAPPS_ACCOUNT: ${{ secrets.SHINYAPPS_ACCOUNT }}
           SHINYAPPS_TOKEN:   ${{ secrets.SHINYAPPS_TOKEN }}
           SHINYAPPS_SECRET:  ${{ secrets.SHINYAPPS_SECRET }}
-          APP_DIR:           ${{ env.APP_DIR }}
-          SHINYAPPS_APPNAME: ${{ env.SHINYAPPS_APPNAME }}
         run: |
           Rscript - <<'RSCRIPT'
-          # Configure rsconnect account from GitHub Secrets
+          if (!"rsconnect" %in% rownames(installed.packages())) install.packages("rsconnect")
           rsconnect::setAccountInfo(
             name   = Sys.getenv("SHINYAPPS_ACCOUNT"),
             token  = Sys.getenv("SHINYAPPS_TOKEN"),
             secret = Sys.getenv("SHINYAPPS_SECRET")
           )
-
           app_dir  <- Sys.getenv("APP_DIR", unset = ".")
-          # Use provided app name or default to folder name
           app_name <- Sys.getenv("SHINYAPPS_APPNAME", unset = basename(normalizePath(app_dir)))
-
-          # Deploy (forceUpdate = TRUE ensures updates overwrite prior bundle)
+          cat("Deploying", app_dir, "as app", app_name, "to account", Sys.getenv("SHINYAPPS_ACCOUNT"), "\n")
           rsconnect::deployApp(
-            appDir   = app_dir,
-            appName  = app_name,
-            forceUpdate = TRUE,
-            logLevel = "verbose"
+            appDir     = app_dir,
+            appName    = app_name,
+            forceUpdate= TRUE,
+            logLevel   = "verbose"
           )
+          message("Deployment completed: https://", Sys.getenv("SHINYAPPS_ACCOUNT"), ".shinyapps.io/", app_name, "/")
           RSCRIPT
